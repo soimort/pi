@@ -1,0 +1,11 @@
+watch(%r{^([^._].*)\.(md|head|include-before|include-after)$}) {
+  |m| `make FILE=#{m[1]}.md html && echo '[Updated]' #{m[1]}.html >/dev/stderr`
+}
+
+watch(%r{^(css|images)/[^.].*$}) {
+  |m| `make FILE=#{m[0]} copy && echo '[Updated]' #{m[0]} >/dev/stderr`
+}
+
+watch(%r{^(_templates)/[^.].*$}) {
+  |m| `make all && echo '[Updated]' #{m[0]} >/dev/stderr`
+}
