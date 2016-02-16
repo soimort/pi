@@ -1,4 +1,4 @@
-# pants
+% pants
 
 **pants (pandoc-使い)** is a minimal site generator powered by [pandoc](http://pandoc.org/).
 
