@@ -4,7 +4,7 @@ OUTDIR=.         # where to put generated HTML files
 SRCDIR=.         # where your source files are
 SRCEXT=md        # extension of source files
 PANDOC=pandoc
-PANDOC_OPTIONS='--mathml --toc --toc-depth=2'
+PANDOC_OPTIONS=
 TEMPLATE=default # pandoc template
 
 all=()
