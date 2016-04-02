@@ -298,6 +298,7 @@ if __FILE__ == $0
                 content = stdout.read
                 data = {
                   :updated => true,
+                  :update_time => last_modified.to_s,
                   :content => content
                 }.to_json
               end
