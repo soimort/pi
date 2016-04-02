@@ -1,38 +1,42 @@
 #!/usr/bin/env ruby
+# coding: utf-8
 
 # Author: Mort Yao <soi@mort.ninja>
 # License:
 #   This is free and unencumbered software released into the public domain.
 """
-Pancake
-<https://github.com/soimort/soimort/tree/pancake>
+Pancake <https://github.com/soimort/soimort/tree/pancake>
 
 Dependencies:
-- ruby >= 2.0
+- ruby     >= 2.0
   - listen >= 3.0
+- pandoc   >= 1.15
 """
-
 require 'yaml'
+require 'json'
+require 'open3'
 require 'webrick'
 require 'listen'
 
-def i(x)   puts "\33[36m#{x}\33[0m"   end
-def ok(x)  puts "\33[33m#{x}\33[0m"   end
-def w(x)   puts "\33[33m#{x}\33[0m"   end
-def e(x)   puts "\33[33;1m#{x}\33[0m" end
-def wtf(x) puts "\33[31;1m#{x}\33[0m" end
-
+# Common settings
 PANDOC = 'pandoc'
 METADATA_EXT = ['.yaml', '.yml']
-SOURCE_EXT   = ['.markdown', '.md']
+SOURCE_EXT   = ['.markdown', '.md', '.md.txt']
 IGNORED_EXT  = ['.html', '.htm']
-
 SETTINGS = {
   'preload' => true,
   'meta'    => [],
   'source'  => [],
 }
 
+# Logging utilities
+def i(x)   puts "\33[36m#{x}\33[0m"   end
+def ok(x)  puts "\33[32m#{x}\33[0m"   end
+def w(x)   puts "\33[33m#{x}\33[0m"   end
+def e(x)   puts "\33[33;1m#{x}\33[0m" end
+def wtf(x) puts "\33[31;1m#{x}\33[0m" end
+
+# Main module
 module Pancake
 
   def self.escape(str)
@@ -147,6 +151,8 @@ module Pancake
   end
 end
 
+# Main entry point
+
 if __FILE__ == $0
   real_targets = [] # keep track of real targets
   extra_opts = []   # keep track of extra options
@@ -201,37 +207,42 @@ if __FILE__ == $0
           Pancake::main(source_file, extra_opts)
         end
 
-      # phony target: server
-      when 'server'
-        # start listen
-        if target_params['watch']
-          if target_params['watch'].class != String
-            listen_path = '.' # true, but no specific watching path
-          elsif File.directory? target_params['watch']
-            listen_path = target_params['watch']
-          elsif File.exist? target_params['watch']
-            listen_path = File.expand_path('..', target_params['watch'])
-          else
-            # invalid watch path
-            wtf "[#{arg_no+1}] [#{target_name}] failed: invalid watch path."
-            exit 1
-          end
-          i "[#{arg_no+1}] [#{target_name}] watching: #{listen_path}"
-          ignored = IGNORED_EXT.collect do |ext|
-            Regexp.new "\\#{ext}$"
-          end
-          listener = Listen.to(listen_path, ignore: ignored) do |m, a, r|
-            w "[#{arg_no+1}] [#{target_name}] modified: #{m}"
-            w "[#{arg_no+1}] [#{target_name}] regenerating ..."
-            real_targets.each do |real_target|
-              Pancake::main(real_target, extra_opts)
-            end
-            ok "[#{arg_no+1}] [#{target_name}] regenerating completed."
-          end
-          listener.start # not blocking
+      # phony target: server, preview
+      when 'server', 'preview'
+        last_modified = Time.now
+        last_pushed = nil
+
+        if !target_params['watch'] or target_params['watch'].class != String
+          listen_path = '.' # true, but no specific watching path
+        elsif File.directory? target_params['watch']
+          listen_path = target_params['watch']
+        elsif File.exist? target_params['watch']
+          listen_path = File.expand_path('..', target_params['watch'])
+        else
+          # invalid watch path
+          wtf "[#{arg_no+1}] [#{target_name}] failed: invalid watch path."
+          exit 1
         end
 
-        # set default port
+        i "[#{arg_no+1}] [#{target_name}] watching: #{listen_path}"
+        ignored = IGNORED_EXT.collect do |ext|
+          Regexp.new "\\#{ext}$"
+        end
+
+        # start listener (watching for changes)
+        listener = Listen.to(listen_path, ignore: ignored) do |m, a, r|
+          last_modified = Time.now
+
+          w "[#{arg_no+1}] [#{target_name}] modified: #{m}"
+          w "[#{arg_no+1}] [#{target_name}] regenerating ..."
+          real_targets.each do |real_target|
+            Pancake::main(real_target, extra_opts)
+          end
+          ok "[#{arg_no+1}] [#{target_name}] regenerating completed."
+        end
+        listener.start # non-blocking
+
+        # set port number (default: 8000)
         if target_params['port']
           target_params['port'] = target_params['port'].to_i
         else
@@ -241,8 +252,70 @@ if __FILE__ == $0
         # start webrick server
         i "[#{arg_no+1}] [#{target_name}] server started: " \
           "http://localhost:#{target_params['port']}/"
-        server = WEBrick::HTTPServer.new(:Port => target_params['port'],
-                                         :DocumentRoot => Dir::pwd)
+        if target_params['verbose']
+          server = WEBrick::HTTPServer.new(
+            :Port => target_params['port'],
+            :DocumentRoot => Dir::pwd
+          )
+        else
+          server = WEBrick::HTTPServer.new(
+            :Port => target_params['port'],
+            :DocumentRoot => Dir::pwd,
+            :Logger => WEBrick::Log.new(File.open(File::NULL, 'w')),
+            :AccessLog => []
+          )
+        end
+
+        if target_name == 'preview'
+          # stream server-sent events
+
+          if real_targets.length != 1
+            w "[#{arg_no+1}] [#{target_name}] more than one target files. " +
+              "previewing the first one."
+          end
+          preview_target = real_targets[0]
+
+          server.mount_proc '/__/refresh/' do |req, res|
+            res.content_type = 'text/event-stream'
+
+            rd, wr = IO.pipe
+            res.body = rd
+            res.chunked = true
+
+            data = nil
+            if last_modified == last_pushed
+              # content unchanged
+              data = {
+                :updated => false
+              }.to_json
+            else
+              # new content
+              i "[#{arg_no+1}] [#{target_name}] (#{Time.now}) content updated."
+              opts = []
+              # FIXME: opts += extra_opts
+              opts << preview_target
+              Open3.popen3(PANDOC, *opts.flatten) do |stdin, stdout, stderr, wait_thr|
+                content = stdout.read
+                data = {
+                  :updated => true,
+                  :content => content
+                }.to_json
+              end
+            end
+
+            begin
+              wr << "data: #{data}" << "\r\n" << "\r\n"
+            rescue => err
+            ensure
+              wr.close()
+            end
+
+            last_pushed = last_modified
+            ok "[#{arg_no+1}] [#{target_name}] (#{Time.now}) event sent." if
+              target_params['verbose']
+          end
+        end
+
         trap('INT') do
           server.shutdown
           i "[#{arg_no+1}] [#{target_name}] closing server ..."
