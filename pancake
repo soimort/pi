@@ -22,7 +22,7 @@ require 'listen'
 PANDOC = 'pandoc'
 METADATA_EXT = ['.yaml', '.yml']
 SOURCE_EXT   = ['.markdown', '.md', '.md.txt']
-IGNORED_EXT  = ['.html', '.htm']
+IGNORED_EXT  = ['.html', '.htm', '.pdf']
 SETTINGS = {
   'preload' => true,
   'meta'    => [],
