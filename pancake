@@ -118,8 +118,12 @@ module Pancake
     # metadata: id
     if meta['source']
       # only when 'source' field is specified
-      id = escape target_path[root_path.length+1..-1]
-      opts << ['-M', "id=#{id}"]
+      begin
+        id = escape target_path[root_path.length+1..-1]
+        opts << ['-M', "id=#{id}"]
+      rescue
+        i "    <#{target}> top-level generation."
+      end
     end
     # misc & raw option(s)
     opts << "--mathjax=#{meta['mathjax']}" if meta['mathjax'] # must use =
