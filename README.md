@@ -20,7 +20,6 @@ This tool does all of the above.
 
 * GHC
     * pandoc >= 1.15
-    * regex-compat
 * Ruby >= 2.0
     * Gems: [listen](https://rubygems.org/gems/listen/) >= 3.0
 
