@@ -1,0 +1,479 @@
+#!/usr/bin/env ruby
+# coding: utf-8
+
+"""
+pi -- A simple pandoc wrapper that does the trick
+
+URL:    https://github.com/soimort/pi
+Author: Mort Yao <soi@mort.ninja>
+
+Dependencies:
+- ruby     >= 2.2
+  - listen ~> 3.0
+- pandoc   >= 1.15
+"""
+
+require 'logger'
+require 'optparse'
+require 'open3'
+require 'webrick'
+require 'yaml'
+
+require 'listen'
+
+Version = '3.14'
+
+$Patterns = {
+  :general      => /^[^_]/,
+  :config       => /^_/,
+
+  :metadata     => /\.(yaml|yml)$/,
+  :source       => /\.(markdown|md|md\.txt)$/,
+  :bibliography => /\.(bib)$/,
+
+}
+
+# List all files/directories in a path.
+def list_files(name = '.', recursive = false, exclude = nil)
+  # check for existence
+  return { :files => [] } unless File.exist? name
+
+  # is a file
+  return { :files => [name] } unless File.directory? name
+
+  # is a directory
+  init_result = { :files => [], :directories => [] }
+  Dir.glob(File.join(name, '*')).inject init_result do |result, item|
+    if exclude.is_a?(Regexp) && exclude.match(File.basename(item))
+      # excluded pattern
+      result
+    elsif File.directory? item
+      # is a directory
+      if recursive
+        {
+          :files => result[:files] +
+                    list_files(item,
+                               recursive = recursive,
+                               exclude = exclude)[:files],
+          :directories => result[:directories]
+        }
+      else
+        {
+          :files => result[:files],
+          :directories => result[:directories] + [item]
+        }
+      end
+    else
+      # is a file
+      {
+        :files => result[:files] + [item],
+        :directories => result[:directories]
+      }
+    end
+  end
+end
+
+# Load configuration from a path.
+def load_config(name = '.', init_metadata = {})
+  metadata = init_metadata
+
+  config = list_files(name, recursive = false, exclude = $Patterns[:general])
+  config[:directories].each do |name|
+    metadata = load_config(name, init_metadata = metadata)
+  end
+  config[:files].inject metadata do |metadata, file|
+    next metadata unless $Patterns[:metadata].match file
+
+    tmp = YAML.load_file file
+    if tmp
+      # save full path of loaded config file to metadata (for future use)
+      file = File.expand_path file
+      if metadata[:files].nil?
+        metadata[:files] = [file]
+      elsif !metadata[:files].include?(file)
+        metadata[:files] << file
+      end
+
+      metadata.merge! tmp
+    else
+      metadata
+    end
+  end
+end
+
+# Load configuration from a path and all its parents to the current path.
+def load_config_all(name = '.', init_metadata = {})
+  metadata = init_metadata
+
+  start_path = $CurPath
+  path = end_path = File.directory?(name) ?
+                      File.expand_path(name) : File.expand_path('..', name)
+  metadata = load_config(path, init_metadata = metadata)
+  until path == start_path do
+    path = File.expand_path('..', path)
+    metadata = load_config(path, init_metadata = metadata)
+  end
+  metadata
+end
+
+# Get the relative name of path1 under some path2.
+def get_relative_name(path1, path2)
+  path1.start_with?(path2) && path1 != path2 ?
+    path1[path2.length+1..-1] : ""
+end
+
+# Convert a source file. (synchronous)
+# Return: exit status of the converter process.
+def make(source, init_metadata = {}, preload = true, options = {}, logger = Logger.new(STDERR))
+  metadata = init_metadata
+
+  if File.directory? source
+    metadata = load_config_all(source, init_metadata = metadata) if preload
+
+    sources = list_files(source, recursive = false, exclude = $Patterns[:config])
+    sources[:files].each do |source|
+      # skip if not preview and not agree with the specified source file name
+      next if !options[:preview] &&
+              !metadata['source'].nil? &&
+              metadata['source'] != File.basename(source)
+
+      # skip if preview but incorrect source file pattern
+      next if options[:preview] && !$Patterns[:source].match(source)
+
+      # make each file
+      make(source, init_metadata = metadata, preload = preload,
+           options = options, logger = logger)
+    end
+    if options[:recursive]
+      sources[:directories].each do |source|
+        # make each subdir recursively
+        make(source, init_metadata = metadata, preload = preload,
+             options = options, logger = logger)
+      end
+    end
+
+  else # is a file
+    source_dir = File.expand_path('..', source)
+    metadata = load_config_all(source_dir, init_metadata = metadata) if preload
+
+    # check source file extension
+    unless $Patterns[:source].match source
+      logger.warn "Source file '#{source}' not recognized"
+    end
+
+    # start generating conversion parameters
+    params = []
+
+    # pandoc: I/O formats
+    params << ['-f',  metadata['input-format']] if metadata['input-format']
+    params << ['-t',  metadata['output-format']] if metadata['output-format']
+
+    # pandoc: template and filter(s)
+    params << ['--template', metadata['template']] if metadata['template']
+    [metadata['filter'] || metadata['filters']].flatten.each do |filter|
+      params << ['--filter', filter]
+    end if metadata['filter'] || metadata['filters']
+
+    # pandoc: bibliography file name
+    if metadata['source-bibliography'] and
+      File.exist?(File.join(source_dir, metadata['source-bibliography']))
+      params << ['--bibliography',
+                 File.join(source_dir, metadata['source-bibliography'])]
+    end
+
+    # pandoc: target (output) file name
+    if metadata['target'] && !options[:preview]
+      params << ['--output', File.join(source_dir, metadata['target'])]
+    end
+
+    # pandoc: extra metadata (affects underlying document)
+    id = get_relative_name(source_dir, $CurPath)
+    unless id.empty?
+      params << ['-M', "id=#{id}"]
+      logger.info "<#{id}>"
+    else
+      logger.info '*top-level*'
+    end
+
+    # pandoc: raw option(s)
+    [metadata['raw-option'] || metadata['raw-options']].flatten.each do |opt|
+      params << opt
+    end if metadata['raw-option'] || metadata['raw-options']
+
+    # pandoc: extra parameters (provided as command-line args)
+    params << options[:extra_params] if options[:extra_params]
+
+    # pandoc: source file
+    params << File.expand_path(source)
+
+    # pandoc: metadata file name
+    if metadata['source-metadata'] and
+      File.exist?(File.join(source_dir, metadata['source-metadata']))
+      params << File.join(source_dir, metadata['source-metadata'])
+    end
+    # pandoc: preloaded metadata files
+    params << metadata[:files] if metadata[:files]
+
+    logger.info "Generating: #{([options[:converter]] + params).flatten.join ' '}"
+    return 0 if options[:dry]
+    Open3.popen3(options[:converter], *params.flatten) do |stdin, stdout, stderr, wait_thr|
+      out, err = stdout.read, stderr.read
+      if wait_thr.value.success?
+        logger.info 'Done'
+
+        if options[:preview]
+          file_id = get_relative_name(File.expand_path(source), $CurPath)
+          $Cache[file_id] = out
+          if !options[:port].nil?
+            logger.info('Preview at: ' +
+                        URI.escape("http://localhost:#{options[:port]}/#{file_id}"))
+          end
+        end
+      else
+        logger.error "Failed to generate from '#{source}'"
+        logger.error err
+      end
+      return wait_thr.value.exitstatus
+    end
+  end
+end
+
+#
+def make_atom(source_dir, init_metadata: {})
+  # TODO
+end
+
+# main entry point
+if __FILE__ == $0
+  # get current path
+  $CurPath = File.expand_path '.'
+
+  # initialize cache
+  $Cache = {}
+
+  # set logging utility
+  logger = Logger.new STDERR
+  logger.formatter = proc do |severity, datetime, progname, msg|
+    dt = datetime.strftime '%Y-%m-%d %H:%M:%S'
+    case severity
+    when 'FATAL' # red bold
+      "\33[31;1m[#{dt}] #{severity}  #{msg}\33[0m\n"
+    when 'ERROR' # yellow bold
+      "\33[33;1m[#{dt}] #{severity}  #{msg}\33[0m\n"
+    when 'WARN' # yellow
+      "\33[33m[#{dt}] #{severity}  #{msg}\33[0m\n"
+    when 'INFO' # white
+      "\33[37m[#{dt}] #{severity}  #{msg}\33[0m\n"
+    else
+      "[#{dt}] #{severity}  #{msg}\n"
+    end
+  end
+  logger.level = Logger::INFO # default logging level
+
+  # parse options
+  options = { # default option values
+    :converter      => 'pandoc',
+    :port           => '8000',   # nil if --no-server
+    :watch          => './',     # nil if --no-watch
+    :latency        => 0.25,     # pass to Listen
+    :wait_for_delay => 0.10,     # pass to Listen
+    :reaction_time  => 0,        # FIXME: NOT IMPLEMENTED
+    :recursive      => false,
+    :preview        => false,
+    :dry            => false,
+    :extra_params   => []        # must be empty for now
+  }
+  OptionParser.new do |opts|
+    opts.set_banner "Usage: pi [options] [sources]\n\n"
+
+    opts.on('-C', '--converter [PROGRAM]',
+            'Set document converter (default: pandoc)') do |p|
+      options[:converter] = p
+    end
+
+    opts.on('-P', '--port [PORT]',
+            'Set server port (default: 8000)') do |p|
+      options[:port] = p
+    end
+
+    opts.on('-W', '--watch [PATH]',
+            'Set path to watch for changes (default: ./)') do |p|
+      if File.directory? p
+        options[:watch] = p
+      else
+        logger.error "Invalid watching path '#{p}'. Defaulted to ./"
+      end
+    end
+
+    opts.on('--latency [SECONDS]',
+            'Set delay between checking for changes (default: 0.25)') do |s|
+      options[:latency] = s.to_f
+    end
+
+    opts.on('--wait_for_delay [SECONDS]',
+            'Set delay between calls to the callback (default: 0.1)') do |s|
+      options[:wait_for_delay] = s.to_f
+    end
+
+    # TODO
+    #opts.on('-R', '--reaction-time [SECONDS]',
+    #       'Set reaction time (default: 0)') do |s|
+    #  options[:reaction_time] = s.to_f
+    #end
+
+    opts.on('-r', '--recursive', 'Generate recursively') do
+      options[:recursive] = true
+    end
+
+    opts.on('-p', '--preview', 'Preview by path') do
+      options[:preview] = true
+    end
+
+    opts.on('--dry', 'Dry run') do
+      options[:dry] = true
+    end
+
+    opts.on('--no-server', 'Do not start server') do
+      options[:port] = nil
+    end
+
+    opts.on('--no-watch', 'Do not watch for changes') do
+      options[:watch] = nil
+    end
+
+    opts.on('-v', '--[no-]verbose', 'Run verbosely') do |v|
+      logger.level = v ? Logger::INFO : Logger::WARN
+    end
+
+    opts.on('-d', '--debug', 'Enable debug messages') do
+      logger.level = Logger::DEBUG
+    end
+
+    opts.on('-V', '--version', 'Show program name and version') do
+      puts opts.ver
+      exit
+    end
+  end.parse!
+  logger.debug 'options: ' + options.to_s
+
+  # read sources / extra parameters
+  sources = []
+  ARGV.each_index do |arg_no|
+    source = ARGV[arg_no]
+
+    if options[:extra_params].empty?
+      # sanity check
+      if source.start_with? '/'
+        logger.fatal "Absolute path '#{source}' not allowed"
+        raise "Absolute path '#{source}' not allowed"
+      elsif File.exist? source
+        sources << source
+      elsif source.start_with? '-'
+        options[:extra_params] << source
+      else
+        logger.fatal "Source file '#{source}' not found"
+        raise "Source file '#{source}' not found"
+      end
+    else
+      options[:extra_params] << source
+    end
+  end
+  logger.debug 'sources: ' + sources.to_s
+  logger.debug 'extra_params: ' + options[:extra_params].to_s
+
+  # generate from sources
+  sources.each do |source|
+    make(source, init_metadata = {}, preload = true,
+         options = options, logger = logger)
+  end
+
+  if !options[:watch].nil?
+    # start listener
+    listener = Listen.to(options[:watch],
+                         only: Regexp.union($Patterns[:config],
+                                            $Patterns[:metadata],
+                                            $Patterns[:source],
+                                            $Patterns[:bibliography]),
+                         latency: options[:latency],
+                         wait_for_delay: options[:wait_for_delay]) do |m, a, r|
+      m.each do |path|
+        source = get_relative_name(path, $CurPath)
+        logger.info "File modified: #{source}"
+
+        # regenerate from source
+        make(source, init_metadata = {}, preload = true,
+             options = options, logger = logger)
+      end unless m.empty?
+
+      a.each do |path|
+        source = get_relative_name(path, $CurPath)
+        logger.info "File added: #{source}"
+
+        # regenerate from source
+        make(source, init_metadata = {}, preload = true,
+             options = options, logger = logger)
+      end unless a.empty?
+
+      r.each do |path|
+        source = get_relative_name(path, $CurPath)
+        logger.info "File removed: #{source}"
+
+        # TODO: remove generated files
+      end unless r.empty?
+    end
+    logger.info "Watching: #{options[:watch]}"
+    listener.start
+  end
+
+  if !options[:port].nil?
+    # start preview server
+    if logger.level <= Logger::DEBUG
+      server = WEBrick::HTTPServer.new(
+        :Port => options[:port],
+        :DocumentRoot => Dir::pwd
+      )
+    else
+      server = WEBrick::HTTPServer.new(
+        :Port => options[:port],
+        :DocumentRoot => Dir::pwd,
+        :Logger => WEBrick::Log.new(File.open(File::NULL, 'w')),
+        :AccessLog => []
+      )
+    end
+    if options[:preview]
+      server.mount_proc '/' do |request, response|
+        id = get_relative_name(
+          File.join($CurPath, URI.unescape(request.request_uri.path)),
+          $CurPath)
+        if File.exists? id
+          if $Cache[id].nil?
+            make(id, init_metadata = {}, preload = true,
+                 options = options, logger = logger)
+          end # FIXME: what if still nil?
+          response.status = 200
+          response['Content-Type'] = 'text/html; charset=UTF-8'
+          response.body = $Cache[id]
+        elsif id.empty?
+          # show index (a list of cached pages)
+          response.status = 200
+          response['Content-Type'] = 'text/html; charset=UTF-8'
+          response.body += "Cached pages:\n"
+          response.body += "<ul>\n"
+          $Cache.each_key do |key|
+            response.body += "<li><a href='#{key}'>#{key}</a></li>\n"
+          end
+          response.body += "</ul>\n"
+        else
+          response.status = 404
+          response['Content-Type'] = 'text/html; charset=UTF-8'
+          response.body = 'The file or folder does not exist.'
+        end
+      end
+    end
+    # enter server loop
+    logger.info "Server started: http://localhost:#{options[:port]}/"
+    trap('INT') { server.shutdown }
+    server.start
+  end
+
+end
