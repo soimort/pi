@@ -109,7 +109,7 @@ def load_config_all(name = '.', init_metadata = {})
   path = end_path = File.directory?(name) ?
                       File.expand_path(name) : File.expand_path('..', name)
   metadata = load_config(path, init_metadata = metadata)
-  until path == start_path do
+  until path.length <= start_path.length do
     path = File.expand_path('..', path)
     metadata = load_config(path, init_metadata = metadata)
   end
