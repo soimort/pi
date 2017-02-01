@@ -60,6 +60,7 @@ Usage: pi [options] [sources]
     -r, --recursive                  Generate recursively
     -p, --preview                    Preview by path
         --dry                        Dry run
+    -f, --feed                       Build feed
         --no-server                  Do not start server
         --no-watch                   Do not watch for changes
     -v, --[no-]verbose               Run verbosely
