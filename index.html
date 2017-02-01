@@ -1,0 +1,45 @@
+<h1 id="pi">pi</h1>
+<p>A simple pandoc wrapper that does the trick.</p>
+<h2 id="motivation">Motivation</h2>
+<p><strong>pi</strong> is the successor of <a href="https://github.com/soimort/pi/blob/pants/pants">pants</a> and <a href="https://github.com/soimort/pi/blob/pancake/pancake">pancake</a> (and kind of a rewrite of the latter). The aim is to enable handy academic writing and blogging through the power of pandoc, without having to deal with the bloated TeX system or (yet-another) site generator.</p>
+<h2 id="basic-usage">Basic usage</h2>
+<p>Preview any Markdown file:</p>
+<pre><code>$ pi -p README.md</code></pre>
+<p>Arguments following the double-dash <code>--</code> are passed directly to <code>pandoc</code>:</p>
+<pre><code>$ pi -p README.md -- -t latex -o output.pdf</code></pre>
+<p>Preview everything in the current path (recursively):</p>
+<pre><code>$ pi -pr .</code></pre>
+<p>Configuration of page builds is done via metadata fields in specific YAML files, such as <code>_config.yaml</code>: (compatible with <a href="https://github.com/soimort/pi/tree/pancake">pancake</a>)</p>
+<div class="sourceCode"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span class="ot">---</span>
+<span class="fu">template:</span>            template/default.html
+<span class="fu">target:</span>              index.html
+<span class="ot">---</span></code></pre></div>
+<p>Build everything in the current path (recursively) first, then start a server and watch for changes:</p>
+<pre><code>$ pi -r .</code></pre>
+<p>Simply start a server and watch for changes (in the current path, by default):</p>
+<pre><code>$ pi</code></pre>
+<h2 id="dependencies">Dependencies</h2>
+<ul>
+<li>Ruby (&gt;= 2.2)
+<ul>
+<li>Gem: <a href="https://github.com/guard/listen">Listen</a> (&gt;= 3.0)</li>
+</ul></li>
+<li><a href="http://pandoc.org/">Pandoc</a> (&gt;= 1.15)</li>
+</ul>
+<h2 id="command-line-arguments">Command-line arguments</h2>
+<pre><code>Usage: pi [options] [sources]
+
+    -C, --converter [PROGRAM]        Set document converter (default: pandoc)
+    -P, --port [PORT]                Set server port (default: 8000)
+    -W, --watch [PATH]               Set path to watch for changes (default: ./)
+        --latency [SECONDS]          Set delay between checking for changes (default: 0.25)
+        --wait_for_delay [SECONDS]   Set delay between calls to the callback (default: 0.1)
+    -r, --recursive                  Generate recursively
+    -p, --preview                    Preview by path
+        --dry                        Dry run
+    -f, --feed                       Build feed
+        --no-server                  Do not start server
+        --no-watch                   Do not watch for changes
+    -v, --[no-]verbose               Run verbosely
+    -d, --debug                      Enable debug messages
+    -V, --version                    Show program name and version</code></pre>
