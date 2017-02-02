@@ -1,3 +1,13 @@
 ---
-target:              index.html
+title: pi
+project-name: pi
+project-version: 3.14
+project-logo: images/logo.png
+github: soimort/pi
+url: https://www.soimort.org/pi/
+download-url: https://github.com/soimort/pi/archive/master.zip
+
+target:   index.html
+template: _templates/main.html
+raw-options: [--mathml, --toc, --toc-depth=2]
 ---
