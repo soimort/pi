@@ -476,10 +476,11 @@ if __FILE__ == $0
   if !options[:watch].nil?
     # start listener
     listener = Listen.to(options[:watch],
-                         only: Regexp.union($Patterns[:config],
-                                            $Patterns[:metadata],
+                         only: Regexp.union(#$Patterns[:config],
+                                            #$Patterns[:metadata],
                                             $Patterns[:source],
-                                            $Patterns[:bibliography]),
+                                            #$Patterns[:bibliography]
+                         ),
                          latency: options[:latency],
                          wait_for_delay: options[:wait_for_delay]) do |m, a, r|
       m.each do |path|
@@ -487,6 +488,7 @@ if __FILE__ == $0
         logger.info "File modified: #{source}"
 
         # regenerate from source
+        # FIXME: generate from sources (given in args) -- efficiency?
         make(source, init_metadata = {}, preload = true,
              options = options, logger = logger)
       end unless m.empty?
@@ -496,6 +498,7 @@ if __FILE__ == $0
         logger.info "File added: #{source}"
 
         # regenerate from source
+        # FIXME: generate from sources (given in args) -- efficiency?
         make(source, init_metadata = {}, preload = true,
              options = options, logger = logger)
       end unless a.empty?
