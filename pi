@@ -272,6 +272,7 @@ def build_feed(site_dir = '.', options = {}, logger = Logger.new(STDERR))
     val['author-name'] = m['author'] if m.key? 'author'
     val['published'] = m['date'] if m.key? 'date'
     val['updated'] = m['date-updated'] if m.key? 'date-updated'
+    val['category'] = m['category'] if m.key? 'category'
     # workaround: pandoc can't inject raw XML into template; place a holder
     #val['body-holder'] = "\\$#{id}\\$"
 
