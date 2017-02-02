@@ -535,13 +535,17 @@ if __FILE__ == $0
           File.join($CurPath, URI.unescape(request.request_uri.path)),
           $CurPath)
         if File.exists? id
-          if $Cache[id].nil?
-            make(id, init_metadata = {}, preload = true,
-                 options = options, logger = logger)
-          end # FIXME: what if still nil?
-          response.status = 200
-          response['Content-Type'] = 'text/html; charset=UTF-8'
-          response.body = $Cache[id]['body']
+          if $Patterns[:source].match id
+            if $Cache[id].nil?
+              make(id, init_metadata = {}, preload = true,
+                   options = options, logger = logger)
+            end # FIXME: what if still nil?
+            response.status = 200
+            response['Content-Type'] = 'text/html; charset=UTF-8'
+            response.body = $Cache[id]['body']
+          else
+            # FIXME: resource files?
+          end
         elsif id.empty?
           # show index (a list of cached pages)
           response.status = 200
