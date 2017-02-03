@@ -255,9 +255,9 @@ def build_feed(site_dir = '.', options = {}, logger = Logger.new(STDERR))
   elsif metadata['feed-template'].nil?
     logger.fatal "Metadata field 'feed-template' not found. Can't build feed"
     raise "Metadata field 'feed-template' not found. Can't build feed"
-  elsif metadata['feed-yaml'].nil?
-    logger.fatal "Metadata field 'feed-yaml' not found. Can't build feed"
-    raise "Metadata field 'feed-yaml' not found. Can't build feed"
+  elsif metadata['feed-cache'].nil?
+    logger.fatal "Metadata field 'feed-cache' not found. Can't build feed"
+    raise "Metadata field 'feed-cache' not found. Can't build feed"
   end
   logger.info "*#{metadata['feed']['file']}*"
 
@@ -288,14 +288,14 @@ def build_feed(site_dir = '.', options = {}, logger = Logger.new(STDERR))
   end
 
   # write to intermediate YAML file
-  File.open(File.join(site_dir, metadata['feed-yaml']), 'w') do |h|
+  File.open(File.join(site_dir, metadata['feed-cache']), 'w') do |h|
     h.write feed.to_yaml
     h.write '---'
   end if !options[:dry]
 
   params = ['--template', metadata['feed-template'], '-t', 'html',
             '-o', metadata['feed']['file'],
-            metadata['feed-yaml']]
+            metadata['feed-cache']]
 
   logger.info "Generating: #{([options[:converter]] + params).flatten.join ' '}"
   return 0 if options[:dry]
