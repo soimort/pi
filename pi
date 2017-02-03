@@ -269,11 +269,11 @@ def build_feed(site_dir = '.', options = {}, logger = Logger.new(STDERR))
     id = get_relative_name(File.expand_path('..', file_id), $CurPath)
 
     val['id'] = id
-    val['title'] = m['title'] if m.key? 'title'
-    val['author-name'] = m['author'] if m.key? 'author'
-    val['published'] = Time.parse(m['date'].to_s).strftime('%FT%T%:z') if m.key? 'date'
-    val['updated'] = Time.parse(m['date-updated'].to_s).strftime('%FT%T%:z') if m.key? 'date-updated'
-    val['category'] = m['category'] if m.key? 'category'
+    val['title'] = m['title'] if !m['title'].nil?
+    val['author-name'] = m['author'] if !m['author'].nil?
+    val['published'] = Time.parse(m['date'].to_s).strftime('%FT%T%:z') if !m['date'].nil?
+    val['updated'] = Time.parse(m['date-updated'].to_s).strftime('%FT%T%:z') if !m['date-updated'].nil?
+    val['category'] = m['category'] if !m['category'].nil?
     # workaround: pandoc passes through backslashed notations in math formulae
     # use a place holder first
     val['body-holder'] = "\\$#{id}\\$"
