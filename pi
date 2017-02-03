@@ -274,8 +274,9 @@ def build_feed(site_dir = '.', options = {}, logger = Logger.new(STDERR))
     val['published'] = Time.parse(m['date'].to_s).strftime('%FT%T%:z') if m.key? 'date'
     val['updated'] = Time.parse(m['date-updated'].to_s).strftime('%FT%T%:z') if m.key? 'date-updated'
     val['category'] = m['category'] if m.key? 'category'
-    # workaround: pandoc can't inject raw XML into template; place a holder
-    #val['body-holder'] = "\\$#{id}\\$"
+    # workaround: pandoc passes through backslashed notations in math formulae
+    # use a place holder first
+    val['body-holder'] = "\\$#{id}\\$"
 
     feed['entry'] << val if val['published'] &&
                             !File.exist?(File.join(id, '.archived'))
@@ -302,14 +303,14 @@ def build_feed(site_dir = '.', options = {}, logger = Logger.new(STDERR))
     out, err = stdout.read, stderr.read
     if wait_thr.value.success?
       # workaround: write entry body
-      #tmp = File.read(File.join(site_dir, metadata['feed']['file']))
-      #tmp.gsub! /\$([^$]+)\$/ do |s|
-      #  file_id = "#{s[1..-2]}/#{metadata['source']}"
-      #  $Cache[file_id] ? $Cache[file_id]['body'] : s
-      #end
-      #File.open(File.join(site_dir, metadata['feed']['file']), 'w') do |h|
-      #  h.write(tmp)
-      #end
+      tmp = File.read(File.join(site_dir, metadata['feed']['file']))
+      tmp.gsub! /\$([^$]+)\$/ do |s|
+        file_id = "#{s[1..-2]}/#{metadata['source']}"
+        $Cache[file_id] ? $Cache[file_id]['body'] : s
+      end
+      File.open(File.join(site_dir, metadata['feed']['file']), 'w') do |h|
+        h.write(tmp)
+      end
 
       logger.info 'Done'
     else
