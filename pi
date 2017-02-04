@@ -273,7 +273,11 @@ def build_feed(site_dir = '.', options = {}, logger = Logger.new(STDERR))
     val['author-name'] = m['author'] if !m['author'].nil?
     val['published'] = Time.parse(m['date'].to_s).strftime('%FT%T%:z') if !m['date'].nil?
     val['updated'] = Time.parse(m['date-updated'].to_s).strftime('%FT%T%:z') if !m['date-updated'].nil?
-    val['category'] = m['category'] if !m['category'].nil?
+    if !m['category'].nil?
+      val['category'] = m['category']
+    elsif !m['categories'].nil?
+      val['category'] = m['categories']
+    end
     # workaround: pandoc passes through backslashed notations in math formulae
     # use a place holder first
     val['body-holder'] = "\\$#{id}\\$"
