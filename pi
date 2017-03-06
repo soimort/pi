@@ -278,6 +278,7 @@ def build_feed(site_dir = '.', options = {}, logger = Logger.new(STDERR))
     elsif !m['categories'].nil?
       val['category'] = m['categories']
     end
+    val['link'] = m['link'] if !m['link'].nil?
     # workaround: pandoc passes through backslashed notations in math formulae
     # use a place holder first
     val['body-holder'] = "\\$#{id}\\$"
