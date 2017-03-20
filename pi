@@ -515,7 +515,7 @@ if __FILE__ == $0
 
       r.each do |path|
         source = get_relative_name(path, $CurPath)
-        logger.info "File removed: #{source}"
+        #logger.info "File removed: #{source}"
 
         # TODO: remove generated files
       end unless r.empty?
