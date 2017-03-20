@@ -220,7 +220,7 @@ def make(source, init_metadata = {}, preload = true, options = {}, logger = Logg
     Open3.popen3(options[:converter], *params.flatten) do |stdin, stdout, stderr, wait_thr|
       out, err = stdout.read, stderr.read
       if wait_thr.value.success?
-        logger.warn err
+        logger.warn err unless err.empty?
         logger.info 'Done'
 
         if options[:preview] || options[:feed]
@@ -318,7 +318,7 @@ def build_feed(site_dir = '.', options = {}, logger = Logger.new(STDERR))
         h.write(tmp)
       end
 
-      logger.warn err
+      logger.warn err unless err.empty?
       logger.info 'Done'
     else
       logger.error "Failed to build feed"
