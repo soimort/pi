@@ -95,7 +95,7 @@ def load_config(name = '.', init_metadata = {})
         metadata[:files] << file
       end
 
-      metadata.merge! tmp
+      tmp.merge! metadata
     else
       metadata
     end
@@ -104,7 +104,7 @@ end
 
 # Load configuration from a path and all its parents to the current path.
 def load_config_all(name = '.', init_metadata = {})
-  metadata = init_metadata
+  metadata = {}
 
   start_path = $CurPath
   path = end_path = File.directory?(name) ?
@@ -114,7 +114,7 @@ def load_config_all(name = '.', init_metadata = {})
     path = File.expand_path('..', path)
     metadata = load_config(path, init_metadata = metadata)
   end
-  metadata
+  metadata.merge! init_metadata
 end
 
 # Get the relative name of path1 under some path2.
