@@ -2,7 +2,8 @@
 title: pi
 project-name: pi
 project-version: 3.14
-project-logo: images/logo.png
+project-logo: images/logo.jpg
+background: images/background.png
 github: soimort/pi
 url: https://www.soimort.org/pi/
 download-url: https://github.com/soimort/pi/archive/master.zip
