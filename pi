@@ -526,18 +526,27 @@ if __FILE__ == $0
 
   if !options[:port].nil?
     # start preview server
-    if logger.level <= Logger::DEBUG
-      server = WEBrick::HTTPServer.new(
-        :Port => options[:port],
-        :DocumentRoot => Dir::pwd
-      )
-    else
-      server = WEBrick::HTTPServer.new(
-        :Port => options[:port],
-        :DocumentRoot => Dir::pwd,
-        :Logger => WEBrick::Log.new(File.open(File::NULL, 'w')),
-        :AccessLog => []
-      )
+    server = nil
+    loop do
+      begin
+        if logger.level <= Logger::DEBUG
+          server = WEBrick::HTTPServer.new(
+            :Port => options[:port],
+            :DocumentRoot => Dir::pwd
+          )
+        else
+          server = WEBrick::HTTPServer.new(
+            :Port => options[:port],
+            :DocumentRoot => Dir::pwd,
+            :Logger => WEBrick::Log.new(File.open(File::NULL, 'w')),
+            :AccessLog => []
+          )
+        end
+        break
+      rescue
+        logger.warn "Port #{options[:port]} used; check out next port number"
+        options[:port] = (options[:port].to_i + 1).to_s
+      end
     end
     if options[:preview]
       server.mount_proc '/' do |request, response|
