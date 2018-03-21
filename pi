@@ -128,7 +128,7 @@ end
 def make(source, init_metadata = {}, preload = true, options = {}, logger = Logger.new(STDERR))
   metadata = init_metadata
 
-  if File.directory? source
+  if source.is_a? String and File.directory? source
     metadata = load_config_all(source, init_metadata = metadata) if preload
 
     sources = list_files(source, recursive = false, exclude = $Patterns[:config])
@@ -152,12 +152,16 @@ def make(source, init_metadata = {}, preload = true, options = {}, logger = Logg
       end
     end
 
-  else # is a file
-    source_dir = File.expand_path('..', source)
+  else # is (at most) a file
+    if source.nil?
+      source_dir = File.expand_path('.')
+    else
+      source_dir = File.expand_path('..', source)
+    end
     metadata = load_config_all(source_dir, init_metadata = metadata) if preload
 
     # check source file extension
-    unless $Patterns[:source].match source
+    unless $Patterns[:source].match source or source.nil?
       logger.warn "Source file '#{source}' not recognized"
     end
 
@@ -205,7 +209,7 @@ def make(source, init_metadata = {}, preload = true, options = {}, logger = Logg
     params << options[:extra_params] if options[:extra_params]
 
     # pandoc: source file
-    params << File.expand_path(source)
+    params << File.expand_path(source) unless source.nil?
 
     # pandoc: metadata file name
     if metadata['source-metadata'] and
@@ -363,6 +367,7 @@ if __FILE__ == $0
     :latency        => 0.25,     # pass to Listen
     :wait_for_delay => 0.10,     # pass to Listen
     :reaction_time  => 0,        # FIXME: NOT IMPLEMENTED
+    :use_changed    => true,
     :recursive      => false,
     :preview        => false,
     :dry            => false,
@@ -406,6 +411,10 @@ if __FILE__ == $0
     #       'Set reaction time (default: 0)') do |s|
     #  options[:reaction_time] = s.to_f
     #end
+
+    opts.on('--disuse-changed', 'Do not use changed file to regenerate') do
+      options[:use_changed] = false
+    end
 
     opts.on('-r', '--recursive', 'Generate recursively') do
       options[:recursive] = true
@@ -485,6 +494,7 @@ if __FILE__ == $0
 
   if !options[:watch].nil?
     # start listener
+    logger.info "Listening to: #{$Patterns[:source]}"
     listener = Listen.to(options[:watch],
                          only: Regexp.union(#$Patterns[:config],
                                             #$Patterns[:metadata],
@@ -497,20 +507,28 @@ if __FILE__ == $0
         source = get_relative_name(path, $CurPath)
         logger.info "File modified: #{source}"
 
-        # regenerate from source
-        # FIXME: generate from sources (given in args) -- efficiency?
-        make(source, init_metadata = {}, preload = true,
-             options = options, logger = logger)
+        if options[:use_changed]
+          # regenerate from source
+          make(source, init_metadata = {}, preload = true,
+               options = options, logger = logger)
+        else
+          make(nil, init_metadata = {}, preload = true,
+               options = options, logger = logger)
+        end
       end unless m.empty?
 
       a.each do |path|
         source = get_relative_name(path, $CurPath)
         logger.info "File added: #{source}"
 
-        # regenerate from source
-        # FIXME: generate from sources (given in args) -- efficiency?
-        make(source, init_metadata = {}, preload = true,
-             options = options, logger = logger)
+        if options[:use_changed]
+          # regenerate from source
+          make(source, init_metadata = {}, preload = true,
+               options = options, logger = logger)
+        else
+          make(nil, init_metadata = {}, preload = true,
+               options = options, logger = logger)
+        end
       end unless a.empty?
 
       r.each do |path|
