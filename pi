@@ -412,7 +412,7 @@ if __FILE__ == $0
     #  options[:reaction_time] = s.to_f
     #end
 
-    opts.on('--disuse-changed', 'Do not use changed file to regenerate') do
+    opts.on('-D', '--disuse-changed', 'Do not use changed file to regenerate') do
       options[:use_changed] = false
     end
 
