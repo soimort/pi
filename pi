@@ -372,6 +372,7 @@ if __FILE__ == $0
     :preview        => false,
     :dry            => false,
     :feed           => false,
+    :preload        => true,
     :extra_params   => []        # must be empty for now
   }
   OptionParser.new do |opts|
@@ -432,6 +433,10 @@ if __FILE__ == $0
       options[:feed] = true
     end
 
+    opts.on('-P', '--no-preload', 'Do not load configuration files (if any)') do
+      options[:preload] = false
+    end
+
     opts.on('--no-server', 'Do not start server') do
       options[:port] = nil
     end
@@ -482,7 +487,7 @@ if __FILE__ == $0
 
   # generate from sources
   sources.each do |source|
-    make(source, init_metadata = {}, preload = true,
+    make(source, init_metadata = {}, preload = options[:preload],
          options = options, logger = logger)
   end
 
@@ -509,10 +514,10 @@ if __FILE__ == $0
 
         if options[:use_changed]
           # regenerate from source
-          make(source, init_metadata = {}, preload = true,
+          make(source, init_metadata = {}, preload = options[:preload],
                options = options, logger = logger)
         else
-          make(nil, init_metadata = {}, preload = true,
+          make(nil, init_metadata = {}, preload = options[:preload],
                options = options, logger = logger)
         end
       end unless m.empty?
@@ -523,10 +528,10 @@ if __FILE__ == $0
 
         if options[:use_changed]
           # regenerate from source
-          make(source, init_metadata = {}, preload = true,
+          make(source, init_metadata = {}, preload = options[:preload],
                options = options, logger = logger)
         else
-          make(nil, init_metadata = {}, preload = true,
+          make(nil, init_metadata = {}, preload = options[:preload],
                options = options, logger = logger)
         end
       end unless a.empty?
@@ -574,7 +579,7 @@ if __FILE__ == $0
         if File.exists? id
           if $Patterns[:source].match id
             if $Cache[id].nil?
-              make(id, init_metadata = {}, preload = true,
+              make(id, init_metadata = {}, preload = options[:preload],
                    options = options, logger = logger)
             end # FIXME: what if still nil?
             response.status = 200
